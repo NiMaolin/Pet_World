@@ -489,6 +489,14 @@ export const useGameStore = defineStore('game', () => {
         const conflictDef = getItemDef(conflictItem.itemId)
         const { width: conflictW, height: conflictH } = getEffectiveSize(conflictDef, conflictItem.rotated)
 
+        // 边界检查：A 放目标位置，B 放 A 的原位，都必须完全在网格内
+        const aInBounds = toRow >= 0 && toCol >= 0 && toRow + h <= BAG_ROWS && toCol + w <= BAG_COLS
+        const bInBounds = item.row >= 0 && item.col >= 0 && item.row + conflictH <= BAG_ROWS && item.col + conflictW <= BAG_COLS
+        if (!aInBounds || !bInBounds) {
+          lastPlaceError.value = 'out-of-bounds'
+          return false
+        }
+
         // 构建排除 A 和 B 后的临时网格
         const tempItems = bagItems.value.filter(i => i.instanceId !== instanceId && i.instanceId !== conflictId)
         const tempGrid = buildGrid(tempItems, BAG_ROWS, BAG_COLS)
@@ -840,6 +848,14 @@ export const useGameStore = defineStore('game', () => {
       if (conflictItem) {
         const conflictDef = getItemDef(conflictItem.itemId)
         const { width: conflictW, height: conflictH } = getEffectiveSize(conflictDef, conflictItem.rotated)
+
+        // 边界检查：A 放目标位置，B 放 A 的原位，都必须完全在网格内
+        const aInBounds = toRow >= 0 && toCol >= 0 && toRow + h <= box.rows && toCol + w <= box.cols
+        const bInBounds = item.row >= 0 && item.col >= 0 && item.row + conflictH <= box.rows && item.col + conflictW <= box.cols
+        if (!aInBounds || !bInBounds) {
+          lastPlaceError.value = 'out-of-bounds'
+          return false
+        }
 
         // 构建排除 A 和 B 后的临时网格
         const tempItems = box.items.filter(i => i.instanceId !== instanceId && i.instanceId !== conflictId)
