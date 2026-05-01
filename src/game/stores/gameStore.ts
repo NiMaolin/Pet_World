@@ -6,7 +6,7 @@ import { ref, computed } from 'vue'
 import type { Player, BagItem, LootBox, Enemy, MapCell, GameScene, SearchState, LootItem, GridMap, PlaceError } from '../types'
 import { generateMap, TILE_SIZE, MAP_COLS, MAP_ROWS, nextId } from '../utils/mapGen'
 import { getItemDef, SEARCH_TIME } from '../data/items'
-import { buildGrid, canPlace, findPlacement, findBestPlacement, getConflictIds, getEffectiveSize, getItemCellCount } from '../utils/gridUtils'
+import { buildGrid, canPlace, findPlacement, findBestPlacement, getConflictIds, getEffectiveSize, getItemCellCount, calcWaste } from '../utils/gridUtils'
 
 export const BAG_COLS = 6
 export const BAG_ROWS = 4
@@ -328,6 +328,7 @@ export const useGameStore = defineStore('game', () => {
     /**
      * 尝试用给定顺序放置所有物品
      * 使用 Best Fit 算法：每个物品都找最合适的位置
+     * 对每个物品尝试两种旋转状态，选更优的放置位置
      */
     function tryPlaceAll(items: BagItem[]): boolean {
       const placed: BagItem[] = []
@@ -336,48 +337,54 @@ export const useGameStore = defineStore('game', () => {
         const def = getItemDef(item.itemId)
         const grid = buildGrid(placed, BAG_ROWS, BAG_COLS)
 
-        // 用物品当前旋转状态的尺寸
-        const currentRotated = item.rotated
-        const currentW = currentRotated ? def.height : def.width
-        const currentH = currentRotated ? def.width : def.height
+        // 尝试两种旋转状态，选最优位置
+        let bestPos: { row: number; col: number } | null = null
+        let bestRotated = false
+        let bestWaste = Infinity
 
-        // Best Fit：找放入后空间浪费最小的位置
-        let pos = findBestPlacement(grid, currentW, currentH, BAG_ROWS, BAG_COLS)
-
-        if (pos) {
-          // 当前方向能放，用 Best Fit 位置
-          placed.push({
-            instanceId: item.instanceId,
-            itemId: item.itemId,
-            row: pos.row,
-            col: pos.col,
-            rotated: currentRotated
-          })
-          continue
-        }
-
-        // 当前方向放不下，尝试翻转
-        if (def.width !== def.height) {
-          const flippedRotated = !currentRotated
-          const flippedW = flippedRotated ? def.height : def.width
-          const flippedH = flippedRotated ? def.width : def.height
-
-          pos = findBestPlacement(grid, flippedW, flippedH, BAG_ROWS, BAG_COLS)
-
-          if (pos) {
-            placed.push({
-              instanceId: item.instanceId,
-              itemId: item.itemId,
-              row: pos.row,
-              col: pos.col,
-              rotated: flippedRotated
-            })
-            continue
+        // 尝试旋转状态 A：与物品当前旋转状态一致
+        const rotatedA = item.rotated
+        const wA = rotatedA ? def.height : def.width
+        const hA = rotatedA ? def.width : def.height
+        const posA = findBestPlacement(grid, wA, hA, BAG_ROWS, BAG_COLS)
+        if (posA) {
+          const wasteA = calcWaste(grid, posA.row, posA.col, wA, hA, BAG_ROWS, BAG_COLS)
+          if (wasteA < bestWaste) {
+            bestWaste = wasteA
+            bestPos = posA
+            bestRotated = rotatedA
           }
         }
 
-        // 两个方向都放不下，此排列失败
-        return false
+        // 尝试旋转状态 B：翻转（仅非正方形物品）
+        if (def.width !== def.height) {
+          const rotatedB = !item.rotated
+          const wB = rotatedB ? def.height : def.width
+          const hB = rotatedB ? def.width : def.height
+          const posB = findBestPlacement(grid, wB, hB, BAG_ROWS, BAG_COLS)
+          if (posB) {
+            const wasteB = calcWaste(grid, posB.row, posB.col, wB, hB, BAG_ROWS, BAG_COLS)
+            if (wasteB < bestWaste) {
+              bestWaste = wasteB
+              bestPos = posB
+              bestRotated = rotatedB
+            }
+          }
+        }
+
+        if (!bestPos) {
+          // 两个方向都放不下，此排列失败
+          return false
+        }
+
+        // 用最优位置放置
+        placed.push({
+          instanceId: item.instanceId,
+          itemId: item.itemId,
+          row: bestPos.row,
+          col: bestPos.col,
+          rotated: bestRotated
+        })
       }
 
       // 所有物品都放好了，检查目标物品能否放入

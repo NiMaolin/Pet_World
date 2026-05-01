@@ -147,7 +147,7 @@ export function findAllPlacements(
  * 浪费 = 位置右边的剩余空间 + 下方的剩余空间
  * 越小越好（更紧凑）
  */
-function calcWaste(
+export function calcWaste(
   grid: GridMap,
   row: number,
   col: number,
